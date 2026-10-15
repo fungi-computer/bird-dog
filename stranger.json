@@ -1,0 +1,78 @@
+{
+  "expectedTarballFiles": [
+    "package/LICENSE",
+    "package/README.md",
+    "package/dist/effect.d.ts",
+    "package/dist/effect.js",
+    "package/dist/index.d.ts",
+    "package/dist/index.js",
+    "package/dist/internal/promise-mail-room.d.ts",
+    "package/dist/internal/promise-mail-room.js",
+    "package/docs/api/README.md",
+    "package/docs/api/effect.md",
+    "package/docs/api/index.md",
+    "package/package.json"
+  ],
+  "localDependencies": ["../watchdog", "../carrier"],
+  "runtimeFixture": "test/stranger/runtime.mjs",
+  "typecheckFixture": "test/stranger/consumer.mts",
+  "docs": {
+    "sigil": "read",
+    "home": {
+      "lead": "Agent-to-Agent mail for TypeScript: hand work to another Agent and get its reply back once it settles, with retries and no lost mail.",
+      "example": {
+        "file": "home.ts",
+        "title": "Queue agent work and deliver the reply",
+        "caption": "Turns accepted work into a Watchdog job, fans out the reply once it settles, then drains the outbox and prints the delivered reply."
+      },
+      "ladder": {
+        "start": [
+          {
+            "title": "Quickstart",
+            "href": "/quickstart/",
+            "description": "Send work to a child agent and deliver its settled reply."
+          },
+          {
+            "title": "Core concepts",
+            "href": "/concepts/#core-concepts",
+            "description": "Addresses, mail, agent jobs, fan-out, draining and receipts."
+          }
+        ],
+        "tasks": [
+          {
+            "title": "Turn agent work into a Watchdog job",
+            "href": "/api/entry/",
+            "description": "agentJob and decodeAgentJob translate accepted work into Watchdog's opaque payload."
+          },
+          {
+            "title": "Validate mail at a boundary",
+            "href": "/api/effect/",
+            "description": "Parse untrusted mail and job payloads with the Effect Schema parsers."
+          },
+          {
+            "title": "Deliver replies with retries",
+            "href": "/examples/",
+            "description": "Fan out a settled job's replies and drain the outbox until delivered."
+          }
+        ],
+        "reference": [
+          {
+            "title": "API reference",
+            "href": "/api/",
+            "description": "Every export from the root and /effect entrypoints."
+          },
+          {
+            "title": "Install",
+            "href": "/install/",
+            "description": "Entrypoints, peer packages (Watchdog, Carrier) and Node version."
+          },
+          {
+            "title": "Status and limits",
+            "href": "/status/",
+            "description": "Retry schedule, at-least-once delivery and error codes."
+          }
+        ]
+      }
+    }
+  }
+}
