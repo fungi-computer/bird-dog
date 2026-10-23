@@ -163,6 +163,13 @@ schedules an immediate wake and continues from the same place on the next drain.
 receipt under the same key. Replaying the same settlement after a restart finds
 the receipt and does not post the reply again. Keep those receipts as long as
 source settlements can replay. BirdDog does not expire them.
+`hasPendingDelivery(outbox)` reads only whether any reply still awaits a
+delivery attempt, so a host can tell retained receipts and dead letters from
+owed mail.
+
+The Effect mail room's `nextWakeAt()` reads Carrier's earliest owed delivery,
+including future retries. Runtime hosts include that hint in their pending-work
+answer rather than clearing a retry when other runtime work is idle.
 
 **Host ports.** `BirdDog.make` takes four things:
 
@@ -182,11 +189,12 @@ The generated reference is in [docs/api](docs/api/README.md).
   `BirdDogAgentJobPayload`, `BirdDogReply`, `BirdDogOutbox`, `BirdDogOptions`,
   `BirdDogSettlement` and `BirdDogRuntime` types.
 - `@fungi.computer/bird-dog/effect`: `make`, `agentJobFromInput`,
-  `decodeAgentJob`, `settlementReplies`, `boundedDiagnostic`,
-  `BIRD_DOG_DIAGNOSTIC_MAX_LENGTH`, `BirdDogError`, `EffectBirdDogOptions`,
-  `BirdDogEffect` and the schemas `BirdDogAgentReferenceSchema`,
-  `BirdDogReplySchema`, `BirdDogMailSchema`, `BirdDogAgentWorkSchema`,
-  `BirdDogAgentJobPayloadSchema` and `BirdDogAgentJobInputSchema`.
+  `decodeAgentJob`, `settlementReplies`, `hasPendingDelivery`,
+  `boundedDiagnostic`, `BIRD_DOG_DIAGNOSTIC_MAX_LENGTH`, `BirdDogError`,
+  `EffectBirdDogOptions`, `BirdDogEffect` and the schemas
+  `BirdDogAgentReferenceSchema`, `BirdDogReplySchema`, `BirdDogMailSchema`,
+  `BirdDogAgentWorkSchema`, `BirdDogAgentJobPayloadSchema` and
+  `BirdDogAgentJobInputSchema`.
 
 ## Examples and checks
 

@@ -90,6 +90,7 @@ Effect host ports for the durable mail room.
 type BirdDogEffect = Readonly<{
   fanOut: (settlement) => Effect.Effect<void, BirdDogError>;
   drainOutbox: () => Effect.Effect<void, BirdDogError>;
+  nextWakeAt: () => Effect.Effect<number | undefined, BirdDogError>;
 }>;
 ```
 
@@ -455,6 +456,27 @@ readonly `Readonly`\<\{ `key`: `string`; `to`:
 
 ---
 
+### hasPendingDelivery()
+
+```ts
+function hasPendingDelivery(outbox): Effect<boolean, BirdDogError>;
+```
+
+Whether this mail room's outbox still owes any reply a delivery attempt.
+Delivered receipts and exhausted dead letters stay but owe nothing.
+
+#### Parameters
+
+| Parameter | Type                                                                              |
+| --------- | --------------------------------------------------------------------------------- |
+| `outbox`  | `Pick`\<[`EffectBirdDogOptions`](#effectbirddogoptions)\[`"outbox"`\], `"list"`\> |
+
+#### Returns
+
+`Effect`\<`boolean`, [`BirdDogError`](#birddogerror)\>
+
+---
+
 ### make()
 
 ```ts
@@ -462,6 +484,7 @@ function make(options): Effect<
   Readonly<{
     fanOut: (settlement) => Effect<void, BirdDogError>;
     drainOutbox: () => Effect<void, BirdDogError>;
+    nextWakeAt: () => Effect<number | undefined, BirdDogError>;
   }>
 >;
 ```
@@ -478,4 +501,5 @@ Construct BirdDog's Effect-native mail room over Post's shared outbox.
 
 `Effect`\<`Readonly`\<\{ `fanOut`: (`settlement`) => `Effect`\<`void`,
 [`BirdDogError`](#birddogerror)\>; `drainOutbox`: () => `Effect`\<`void`,
-[`BirdDogError`](#birddogerror)\>; \}\>\>
+[`BirdDogError`](#birddogerror)\>; `nextWakeAt`: () => `Effect`\<`number` \|
+`undefined`, [`BirdDogError`](#birddogerror)\>; \}\>\>

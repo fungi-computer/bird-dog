@@ -4,7 +4,10 @@ import type {
 } from "@fungi.computer/watchdog";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { makePostOutbox } from "@fungi.computer/carrier/post";
+import {
+  makePostOutbox,
+  postOutboxPending,
+} from "@fungi.computer/carrier/post";
 
 import type {
   BirdDogAgentJobInput,
@@ -168,6 +171,8 @@ export type BirdDogEffect = Readonly<{
   fanOut: (settlement: BirdDogSettlement) => Effect.Effect<void, BirdDogError>;
   /** Deliver due replies and schedule any required retry wake. */
   drainOutbox: () => Effect.Effect<void, BirdDogError>;
+  /** Earliest owed reply delivery, including retries; absent after delivery. */
+  nextWakeAt: () => Effect.Effect<number | undefined, BirdDogError>;
 }>;
 
 /** Validate and translate agent work into Watchdog's opaque job grammar. */
@@ -239,6 +244,15 @@ export function settlementReplies(
   }));
 }
 
+/**
+ * Whether this mail room's outbox still owes any reply a delivery attempt.
+ * Delivered receipts and exhausted dead letters stay but owe nothing.
+ */
+export const hasPendingDelivery = (
+  outbox: Pick<EffectBirdDogOptions["outbox"], "list">,
+): Effect.Effect<boolean, BirdDogError> =>
+  postOutboxPending({ message: BirdDogMailSchema, outbox });
+
 /** Construct BirdDog's Effect-native mail room over Post's shared outbox. */
 export const make = (
   options: EffectBirdDogOptions,
@@ -268,5 +282,9 @@ export const make = (
       }
       if (wake !== undefined) yield* options.scheduleWake(wake);
     });
-  return Effect.succeed({ fanOut, drainOutbox: post.drain });
+  return Effect.succeed({
+    fanOut,
+    drainOutbox: post.drain,
+    nextWakeAt: post.nextWakeAt,
+  });
 };
