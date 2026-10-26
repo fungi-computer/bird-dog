@@ -192,6 +192,11 @@ it.each(["failed", "interrupted", "outcome_unknown"] as const)(
     expect(reply?.meta).toBeUndefined();
     expect(reply?.content).toBe("Partial answer");
     expect(reply?.reply?.outcome).toBe(outcome);
+    if (
+      reply?.reply?.outcome === "accepted" ||
+      reply?.reply?.outcome === "undeliverable"
+    )
+      throw new Error("Settled work reply unexpectedly undeliverable");
     expect(reply?.reply?.commandId).toBe(`entry-command-${outcome}`);
     const diagnostic = reply?.reply?.diagnostic ?? "";
     expect(

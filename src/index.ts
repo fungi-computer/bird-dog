@@ -15,18 +15,11 @@ export type BirdDogAgentReference = Readonly<{
   sessionId: string;
 }>;
 
-/** Addressed agent correspondence carried with durable work when a reply is owed. */
-export type BirdDogMail = Readonly<{
-  key: string;
-  to: BirdDogAgentReference;
-  from: BirdDogAgentReference;
-  replyTo: readonly BirdDogAgentReference[];
-  content: string;
-  createdAt: number;
-  /** The sender's opaque host metadata; BirdDog never reads it. */
-  meta?: BirdDogMeta;
-  /** Settlement facts, present only on a reply BirdDog built. */
-  reply?: BirdDogReply;
+/** An addressed Agent whose first Session may be created on acceptance. */
+export type BirdDogAgentRecipientReference = Readonly<{
+  kind: "agent";
+  agentId: string;
+  sessionId?: string;
 }>;
 
 /**
@@ -34,15 +27,56 @@ export type BirdDogMail = Readonly<{
  * recipient's host trusts these facts only after it authenticates the reply
  * against the mail it sent.
  */
-export type BirdDogReply = Readonly<{
-  /** The replying Session's accepted command: the sender's receipt `commandId`. */
-  commandId: string;
-  /** The exact Watchdog outcome; failures are never collapsed. */
-  outcome:
-    "completed" | "failed" | "interrupted" | "cancelled" | "outcome_unknown";
-  /** Bounded terminal diagnostic for work that did not complete or cancel. */
-  diagnostic?: string;
-}>;
+export type BirdDogReply =
+  | Readonly<{
+      /** The recipient accepted the work into the named Session. */
+      commandId: string;
+      outcome: "accepted";
+    }>
+  | Readonly<{
+      /** The replying Session's accepted command: the sender's receipt `commandId`. */
+      commandId: string;
+      /** The exact Watchdog outcome; failures are never collapsed. */
+      outcome:
+        | "completed"
+        | "failed"
+        | "interrupted"
+        | "cancelled"
+        | "outcome_unknown";
+      /** Bounded terminal diagnostic for work that did not complete or cancel. */
+      diagnostic?: string;
+    }>
+  | Readonly<{
+      outcome: "undeliverable";
+      reason: "recipient_offline" | "recipient_left";
+    }>;
+
+/** Addressed mail; an unstarted Agent may author only an undeliverable reply. */
+export type BirdDogMail =
+  | Readonly<{
+      key: string;
+      to: BirdDogAgentRecipientReference;
+      replyTo: readonly BirdDogAgentReference[];
+      content: string;
+      createdAt: number;
+      /** The sender's opaque host metadata; BirdDog never reads it. */
+      meta?: BirdDogMeta;
+      from: BirdDogAgentReference;
+      /** Settlement or acceptance facts, present only on a reply. */
+      reply?: BirdDogReply;
+    }>
+  | Readonly<{
+      key: string;
+      to: BirdDogAgentRecipientReference;
+      replyTo: readonly BirdDogAgentReference[];
+      content: string;
+      createdAt: number;
+      /** The sender's opaque host metadata; BirdDog never reads it. */
+      meta?: BirdDogMeta;
+      /** No Session exists when a never-started recipient is undeliverable. */
+      from: BirdDogAgentRecipientReference;
+      reply: Extract<BirdDogReply, { outcome: "undeliverable" }>;
+    }>;
 
 /** Opaque JSON a host attached to the work; BirdDog only carries it. */
 export type BirdDogMeta = typeof Schema.Json.Type;

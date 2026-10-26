@@ -1,5 +1,25 @@
 # @fungi.computer/bird-dog
 
+## 0.2.0
+
+### Minor Changes
+
+- Changes since 0.1.0:
+
+  - fix(bird-dog): keep mail contract type declarations self-contained
+  - fix(bird-dog): remove unreachable undeliverable builder
+  - fix(mesh): type atomic sessionless admission
+  - feat(mesh): wip sessionless acceptance checkpoint
+  - fix(mesh): clear lint failures in mail contract
+  - feat(mesh): report terminal undeliverable mail replies
+  - fix(mesh): keep mail size enforcement in BirdDog schema
+  - feat(bird-dog): bound mail content by UTF-8 bytes
+
+### Patch Changes
+
+- Updated dependencies
+  - @fungi.computer/carrier@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

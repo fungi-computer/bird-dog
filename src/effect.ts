@@ -21,11 +21,32 @@ const Identifier = Schema.String.check(
   Schema.isMaxLength(256),
 );
 
+/** The maximum UTF-8 size of one mail body. */
+export const BIRD_DOG_MAIL_CONTENT_MAX_BYTES = 256 * 1024;
+
+const MailContent = Schema.String.check(
+  Schema.makeFilter(
+    (content) =>
+      new TextEncoder().encode(content).byteLength <=
+      BIRD_DOG_MAIL_CONTENT_MAX_BYTES,
+    {
+      message: `Mail content must be at most ${String(BIRD_DOG_MAIL_CONTENT_MAX_BYTES)} UTF-8 bytes`,
+    },
+  ),
+);
+
 /** Parser for an ordinary agent Session address. */
 export const BirdDogAgentReferenceSchema = Schema.Struct({
   kind: Schema.Literal("agent"),
   agentId: Identifier,
   sessionId: Identifier,
+});
+
+/** An addressed Agent may create its first Session when accepting this mail. */
+export const BirdDogAgentRecipientReferenceSchema = Schema.Struct({
+  kind: Schema.Literal("agent"),
+  agentId: Identifier,
+  sessionId: Schema.optionalKey(Identifier),
 });
 
 /** The most characters a reply's failure diagnostic may carry. */
@@ -36,7 +57,7 @@ export const BIRD_DOG_DIAGNOSTIC_MAX_LENGTH = 200;
  * replying Session's command, its exact Watchdog outcome and, for work that did
  * not complete, the Session's bounded terminal diagnostic.
  */
-export const BirdDogReplySchema = Schema.Struct({
+export const SettledBirdDogReplySchema = Schema.Struct({
   commandId: Identifier,
   outcome: Schema.Literals([
     "completed",
@@ -52,6 +73,29 @@ export const BirdDogReplySchema = Schema.Struct({
     ),
   ),
 });
+
+/** A terminal delivery failure, correlated by the original mail key only. */
+export const BirdDogUndeliverableReasonSchema = Schema.Literals([
+  "recipient_offline",
+  "recipient_left",
+]);
+
+export const UndeliverableBirdDogReplySchema = Schema.Struct({
+  outcome: Schema.Literal("undeliverable"),
+  reason: BirdDogUndeliverableReasonSchema,
+});
+
+/** Recipient acceptance, before the command has settled. */
+export const AcceptedBirdDogReplySchema = Schema.Struct({
+  outcome: Schema.Literal("accepted"),
+  commandId: Identifier,
+});
+
+export const BirdDogReplySchema = Schema.Union([
+  SettledBirdDogReplySchema,
+  UndeliverableBirdDogReplySchema,
+  AcceptedBirdDogReplySchema,
+]);
 
 const REDACTED = "[redacted]";
 // An authorization scheme's credential, e.g. `Bearer <token>`.
@@ -88,18 +132,30 @@ export function boundedDiagnostic(text: string): string | undefined {
 }
 
 /** Parser for addressed agent correspondence. */
-export const BirdDogMailSchema = Schema.Struct({
+const BirdDogMailFields = {
   key: Identifier,
-  to: BirdDogAgentReferenceSchema,
-  from: BirdDogAgentReferenceSchema,
+  to: BirdDogAgentRecipientReferenceSchema,
   replyTo: Schema.Array(BirdDogAgentReferenceSchema),
-  content: Schema.String,
+  content: MailContent,
   createdAt: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
   /** The sender's opaque host metadata; BirdDog never reads it. */
   meta: Schema.optionalKey(Schema.Json),
-  /** Settlement facts, present only on a reply BirdDog built. */
-  reply: Schema.optionalKey(BirdDogReplySchema),
-});
+};
+
+export const BirdDogMailSchema = Schema.Union([
+  Schema.Struct({
+    ...BirdDogMailFields,
+    from: BirdDogAgentReferenceSchema,
+    /** Settlement or acceptance facts, present only on a reply. */
+    reply: Schema.optionalKey(BirdDogReplySchema),
+  }),
+  Schema.Struct({
+    ...BirdDogMailFields,
+    from: BirdDogAgentRecipientReferenceSchema,
+    /** An unstarted recipient can only author an undeliverable reply. */
+    reply: UndeliverableBirdDogReplySchema,
+  }),
+]);
 
 /** Parser for accepted Session work. */
 export const BirdDogAgentWorkSchema = Schema.Struct({
@@ -169,6 +225,9 @@ export type EffectBirdDogOptions = Readonly<{
 export type BirdDogEffect = Readonly<{
   /** Queue replies owed by a settled agent job. */
   fanOut: (settlement: BirdDogSettlement) => Effect.Effect<void, BirdDogError>;
+  /** Durably queue one authored mail item in this Agent's existing outbox. */
+  postMail?:
+    ((mail: BirdDogMail) => Effect.Effect<void, BirdDogError>) | undefined;
   /** Deliver due replies and schedule any required retry wake. */
   drainOutbox: () => Effect.Effect<void, BirdDogError>;
   /** Earliest owed reply delivery, including retries; absent after delivery. */
@@ -233,7 +292,7 @@ export function settlementReplies(
   return mail.replyTo.map((destination, index) => ({
     key: `${mail.key}:reply:${String(index)}`,
     to: destination,
-    from: mail.to,
+    from: { ...mail.to, sessionId: work.sessionId },
     replyTo: [],
     content:
       settlement.content.length > 0
@@ -242,6 +301,32 @@ export function settlementReplies(
     createdAt,
     reply,
   }));
+}
+
+/** Build the recipient's one stable acceptance notice for one original mail. */
+export function acceptedNotice(
+  mail: BirdDogMail,
+  sessionId: string,
+  commandId: string,
+  createdAt: number,
+): BirdDogMail {
+  const recipientSession = Schema.decodeUnknownSync(Identifier)(sessionId);
+  const sender = Schema.decodeUnknownSync(BirdDogAgentReferenceSchema)(
+    mail.from,
+  );
+  const reply = Schema.decodeUnknownSync(AcceptedBirdDogReplySchema)({
+    outcome: "accepted",
+    commandId,
+  });
+  return {
+    key: `${mail.key}:accepted`,
+    to: sender,
+    from: { ...mail.to, sessionId: recipientSession },
+    replyTo: [],
+    content: "Work accepted.",
+    createdAt,
+    reply,
+  };
 }
 
 /**
@@ -282,8 +367,16 @@ export const make = (
       }
       if (wake !== undefined) yield* options.scheduleWake(wake);
     });
+  const postMail = (mail: BirdDogMail) =>
+    Effect.gen(function* () {
+      const createdAt = options.now();
+      const hint = yield* post.enqueue(mail, createdAt);
+      if (hint !== undefined) yield* options.scheduleWake(hint);
+      return;
+    });
   return Effect.succeed({
     fanOut,
+    postMail,
     drainOutbox: post.drain,
     nextWakeAt: post.nextWakeAt,
   });
