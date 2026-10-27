@@ -1,5 +1,14 @@
 # @fungi.computer/bird-dog
 
+## 0.2.1
+
+### Patch Changes
+
+- Changes since 0.2.0:
+
+  - fix(release): inline Gitleaks fixture allows
+  - fix(mesh): admit Hub offline dispositions
+
 ## 0.2.0
 
 ### Minor Changes

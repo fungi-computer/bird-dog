@@ -49,6 +49,12 @@ export const BirdDogAgentRecipientReferenceSchema = Schema.Struct({
   sessionId: Schema.optionalKey(Identifier),
 });
 
+/** The Hub's stable system identity for a terminal offline disposition. */
+export const BirdDogSystemIdentitySchema = Schema.Struct({
+  kind: Schema.Literal("system"),
+  systemId: Schema.Literal("hub"),
+});
+
 /** The most characters a reply's failure diagnostic may carry. */
 export const BIRD_DOG_DIAGNOSTIC_MAX_LENGTH = 200;
 
@@ -95,6 +101,15 @@ export const BirdDogReplySchema = Schema.Union([
   SettledBirdDogReplySchema,
   UndeliverableBirdDogReplySchema,
   AcceptedBirdDogReplySchema,
+]);
+
+const BirdDogAgentReplySchema = Schema.Union([
+  SettledBirdDogReplySchema,
+  AcceptedBirdDogReplySchema,
+  Schema.Struct({
+    outcome: Schema.Literal("undeliverable"),
+    reason: Schema.Literal("recipient_left"),
+  }),
 ]);
 
 const REDACTED = "[redacted]";
@@ -147,15 +162,18 @@ export const BirdDogMailSchema = Schema.Union([
     ...BirdDogMailFields,
     from: BirdDogAgentReferenceSchema,
     /** Settlement or acceptance facts, present only on a reply. */
-    reply: Schema.optionalKey(BirdDogReplySchema),
+    reply: Schema.optionalKey(BirdDogAgentReplySchema),
   }),
   Schema.Struct({
     ...BirdDogMailFields,
-    from: BirdDogAgentRecipientReferenceSchema,
-    /** An unstarted recipient can only author an undeliverable reply. */
-    reply: UndeliverableBirdDogReplySchema,
+    from: BirdDogSystemIdentitySchema,
+    /** Only the Hub may author this offline disposition. */
+    reply: Schema.Struct({
+      outcome: Schema.Literal("undeliverable"),
+      reason: Schema.Literal("recipient_offline"),
+    }),
   }),
-]);
+] as const);
 
 /** Parser for accepted Session work. */
 export const BirdDogAgentWorkSchema = Schema.Struct({
@@ -284,7 +302,7 @@ export function settlementReplies(
     settlement.diagnostic === undefined
       ? undefined
       : boundedDiagnostic(settlement.diagnostic);
-  const reply = Schema.decodeUnknownSync(BirdDogReplySchema)(
+  const reply = Schema.decodeUnknownSync(SettledBirdDogReplySchema)(
     diagnostic === undefined
       ? { commandId: work.commandFactId, outcome }
       : { commandId: work.commandFactId, outcome, diagnostic },
@@ -342,7 +360,7 @@ export const hasPendingDelivery = (
 export const make = (
   options: EffectBirdDogOptions,
 ): Effect.Effect<BirdDogEffect> => {
-  const post = makePostOutbox({
+  const post = makePostOutbox<BirdDogMail, BirdDogError>({
     message: BirdDogMailSchema,
     key: (mail: BirdDogMail) => `outbox:${mail.key}`,
     outbox: options.outbox,

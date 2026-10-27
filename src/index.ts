@@ -22,6 +22,12 @@ export type BirdDogAgentRecipientReference = Readonly<{
   sessionId?: string;
 }>;
 
+/** The Hub's stable system identity for a terminal offline disposition. */
+export type BirdDogSystemIdentity = Readonly<{
+  kind: "system";
+  systemId: "hub";
+}>;
+
 /**
  * What a reply reports about the settled work beside its content. The
  * recipient's host trusts these facts only after it authenticates the reply
@@ -51,7 +57,15 @@ export type BirdDogReply =
       reason: "recipient_offline" | "recipient_left";
     }>;
 
-/** Addressed mail; an unstarted Agent may author only an undeliverable reply. */
+/** Facts an Agent may author; the Hub owns recipient-offline disposition. */
+export type BirdDogAgentReply =
+  | Exclude<BirdDogReply, { outcome: "undeliverable" }>
+  | Readonly<{ outcome: "undeliverable"; reason: "recipient_left" }>;
+
+/**
+ * Addressed correspondence. Agents author ordinary replies and recipient-left
+ * notices; only the Hub system authors recipient-offline dispositions.
+ */
 export type BirdDogMail =
   | Readonly<{
       key: string;
@@ -63,7 +77,7 @@ export type BirdDogMail =
       meta?: BirdDogMeta;
       from: BirdDogAgentReference;
       /** Settlement or acceptance facts, present only on a reply. */
-      reply?: BirdDogReply;
+      reply?: BirdDogAgentReply;
     }>
   | Readonly<{
       key: string;
@@ -73,10 +87,31 @@ export type BirdDogMail =
       createdAt: number;
       /** The sender's opaque host metadata; BirdDog never reads it. */
       meta?: BirdDogMeta;
-      /** No Session exists when a never-started recipient is undeliverable. */
-      from: BirdDogAgentRecipientReference;
-      reply: Extract<BirdDogReply, { outcome: "undeliverable" }>;
+      /** The Hub owns offline disposition authorship, not the recipient. */
+      from: BirdDogSystemIdentity;
+      reply: Readonly<{
+        outcome: "undeliverable";
+        reason: "recipient_offline";
+      }>;
     }>;
+
+/** Construct the one stable system reply correlated to the exact sent letter. */
+export function undeliverableReply(
+  original: BirdDogMail,
+  createdAt: number,
+): BirdDogMail {
+  if (original.reply !== undefined || original.from.kind !== "agent")
+    throw new Error("A reply cannot receive another undeliverable disposition");
+  return {
+    key: `${original.key}:reply:0`,
+    from: { kind: "system", systemId: "hub" },
+    to: original.from,
+    replyTo: [],
+    content: "undeliverable",
+    createdAt,
+    reply: { outcome: "undeliverable", reason: "recipient_offline" },
+  };
+}
 
 /** Opaque JSON a host attached to the work; BirdDog only carries it. */
 export type BirdDogMeta = typeof Schema.Json.Type;

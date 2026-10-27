@@ -247,7 +247,7 @@ it("drops a diagnostic from completed and cancelled replies", () => {
 it("masks credential-shaped values in a diagnostic before bounding it", () => {
   expect(
     boundedDiagnostic(
-      'provider_error: 401 Incorrect API key provided: sk-proj-Ab12Cd34Ef56Gh78Ij90Kl12. Authorization: Bearer eyJhbGciOi.payload api_key=hunter2 {"token": "abc"}',
+      'provider_error: 401 Incorrect API key provided: sk-proj-Ab12Cd34Ef56Gh78Ij90Kl12. Authorization: Bearer eyJhbGciOi.payload api_key=hunter2 {"token": "abc"}', //gitleaks:allow
     ),
   ).toBe(
     'provider_error: 401 Incorrect API key provided: [redacted]. Authorization: Bearer [redacted] api_key=[redacted] {"token": "[redacted]"}',
