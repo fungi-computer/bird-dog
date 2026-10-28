@@ -12,6 +12,7 @@ import {
 import type {
   BirdDogAgentJobInput,
   BirdDogAgentJobPayload,
+  BirdDogDelegator,
   BirdDogMail,
   BirdDogSettlement,
 } from "./index.js";
@@ -58,10 +59,25 @@ export const BirdDogSystemIdentitySchema = Schema.Struct({
 /** The most characters a reply's failure diagnostic may carry. */
 export const BIRD_DOG_DIAGNOSTIC_MAX_LENGTH = 200;
 
+/** The most open items one reply names as waiting on its recipient. */
+export const BIRD_DOG_WAITING_MAX_ITEMS = 8;
+
+/**
+ * One open item of the replying Session that waits on this reply's recipient.
+ * BirdDog carries the three bounded fields; the replying host owns their
+ * meaning and the recipient host owns every decision about them.
+ */
+export const BirdDogWaitingItemSchema = Schema.Struct({
+  itemId: Identifier,
+  kind: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  summary: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+});
+
 /**
  * Parser for the settlement facts a reply carries beside its content: the
- * replying Session's command, its exact Watchdog outcome and, for work that did
- * not complete, the Session's bounded terminal diagnostic.
+ * replying Session's command, its exact Watchdog outcome, for work that did
+ * not complete the Session's bounded terminal diagnostic and, when the
+ * replying host names any, the open items now waiting on the recipient.
  */
 export const SettledBirdDogReplySchema = Schema.Struct({
   commandId: Identifier,
@@ -78,6 +94,12 @@ export const SettledBirdDogReplySchema = Schema.Struct({
       Schema.isMaxLength(BIRD_DOG_DIAGNOSTIC_MAX_LENGTH),
     ),
   ),
+  waitingOnYou: Schema.optionalKey(
+    Schema.Array(BirdDogWaitingItemSchema).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(BIRD_DOG_WAITING_MAX_ITEMS),
+    ),
+  ),
 });
 
 /** A terminal delivery failure, correlated by the original mail key only. */
@@ -86,6 +108,7 @@ export const BirdDogUndeliverableReasonSchema = Schema.Literals([
   "recipient_left",
 ]);
 
+/** Parser for a terminal delivery failure reply. */
 export const UndeliverableBirdDogReplySchema = Schema.Struct({
   outcome: Schema.Literal("undeliverable"),
   reason: BirdDogUndeliverableReasonSchema,
@@ -97,6 +120,7 @@ export const AcceptedBirdDogReplySchema = Schema.Struct({
   commandId: Identifier,
 });
 
+/** Parser for any reply: settled, accepted or undeliverable. */
 export const BirdDogReplySchema = Schema.Union([
   SettledBirdDogReplySchema,
   UndeliverableBirdDogReplySchema,
@@ -111,6 +135,13 @@ const BirdDogAgentReplySchema = Schema.Union([
     reason: Schema.Literal("recipient_left"),
   }),
 ]);
+
+/** The settlement facts of one reply, built field by field before validation. */
+type SettledReplyFacts = {
+  -readonly [
+    K in keyof typeof SettledBirdDogReplySchema.Encoded
+  ]: (typeof SettledBirdDogReplySchema.Encoded)[K];
+};
 
 const REDACTED = "[redacted]";
 // An authorization scheme's credential, e.g. `Bearer <token>`.
@@ -157,6 +188,7 @@ const BirdDogMailFields = {
   meta: Schema.optionalKey(Schema.Json),
 };
 
+/** Parser for addressed Agent mail, from an Agent or from the Hub system. */
 export const BirdDogMailSchema = Schema.Union([
   Schema.Struct({
     ...BirdDogMailFields,
@@ -285,16 +317,26 @@ export const decodeAgentJob = (
 /**
  * Build the replies owed by one settlement for a host-owned Post transport.
  * Each reply carries the settled content verbatim (or, when there is none, one
- * sentence naming the outcome, so the reply is always admissible text) and its
- * settlement facts as typed fields; the recipient's host authenticates them and decides how they
- * are presented. A reply never carries the settled work's host metadata.
+ * sentence naming the outcome and its diagnostic, so the reply is always
+ * admissible text) and its settlement facts as typed fields; the recipient's
+ * host authenticates them and decides how they are presented. A reply never
+ * carries the settled work's host metadata.
+ *
+ * Work a delegator's mail admitted replies to that mail under its `:reply:`
+ * key. Any other settled work, whatever started its turn, is a report to the
+ * Session's delegator of record, when the host names one (it does so once the
+ * Session is idle), under the delegator mail's `:report:` key.
  */
 export function settlementReplies(
   settlement: BirdDogSettlement,
   createdAt: number,
 ): readonly BirdDogMail[] {
   const { work, mail } = decodeAgentJob(settlement.job);
-  if (mail === undefined) return [];
+  const answered = mail !== undefined && mail.replyTo.length > 0;
+  const owed: BirdDogDelegator | undefined = answered
+    ? { key: mail.key, agentId: mail.to.agentId, replyTo: mail.replyTo }
+    : settlement.delegator;
+  if (owed === undefined) return [];
   const outcome = settlement.job.outcome;
   const diagnostic =
     outcome === "completed" ||
@@ -302,20 +344,33 @@ export function settlementReplies(
     settlement.diagnostic === undefined
       ? undefined
       : boundedDiagnostic(settlement.diagnostic);
-  const reply = Schema.decodeUnknownSync(SettledBirdDogReplySchema)(
-    diagnostic === undefined
-      ? { commandId: work.commandFactId, outcome }
-      : { commandId: work.commandFactId, outcome, diagnostic },
-  );
-  return mail.replyTo.map((destination, index) => ({
-    key: `${mail.key}:reply:${String(index)}`,
+  const facts: SettledReplyFacts = { commandId: work.commandFactId, outcome };
+  if (diagnostic !== undefined) facts.diagnostic = diagnostic;
+  if (
+    settlement.waitingOnYou !== undefined &&
+    settlement.waitingOnYou.length > 0
+  )
+    facts.waitingOnYou = settlement.waitingOnYou;
+  const reply = Schema.decodeUnknownSync(SettledBirdDogReplySchema)(facts);
+  return owed.replyTo.map((destination, index) => ({
+    key: answered
+      ? `${owed.key}:reply:${String(index)}`
+      : `${owed.key}:report:${work.commandFactId}:${String(index)}`,
     to: destination,
-    from: { ...mail.to, sessionId: work.sessionId },
+    from: {
+      kind: "agent" as const,
+      agentId: owed.agentId,
+      sessionId: work.sessionId,
+    },
     replyTo: [],
     content:
       settlement.content.length > 0
         ? settlement.content
-        : `The delegated work ended ${outcome} without reply text.`,
+        : `The delegated work ended ${outcome}${
+            diagnostic === undefined
+              ? " without reply text."
+              : `: ${diagnostic}`
+          }`,
     createdAt,
     reply,
   }));

@@ -1,5 +1,15 @@
 # @fungi.computer/bird-dog
 
+## 0.3.0
+
+### Minor Changes
+
+- Changes since 0.2.1:
+
+  - feat(shiitake): route a child's waiting items to the Agent that sent the
+    work
+  - fix(delegation): every idle Session reports to whoever sent it work
+
 ## 0.2.1
 
 ### Patch Changes

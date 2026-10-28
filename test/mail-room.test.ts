@@ -712,3 +712,174 @@ it("keeps the host's original failure as the cause of a mail room error", async 
   });
   expect(listed).toHaveProperty("cause", failure);
 });
+
+const delegator = {
+  key: "delegation-1",
+  agentId: child.agentId,
+  replyTo: [parent],
+} as const;
+
+it("a goal turn after the sent command reports to the sender when the Session goes idle", () => {
+  const goalTurn = BirdDog.agentJob({
+    work: {
+      jobId: "job-goal-2",
+      sessionId: child.sessionId,
+      commandFactId: "entry-goal-2",
+    },
+  });
+  const settled = {
+    ...goalTurn,
+    state: "settled",
+    outcome: "completed",
+  } as const;
+  expect(settlementReplies({ job: settled, content: "READY" }, 100)).toEqual(
+    [],
+  );
+  expect(
+    settlementReplies({ job: settled, content: "READY", delegator }, 100),
+  ).toEqual([
+    {
+      key: "delegation-1:report:entry-goal-2:0",
+      to: parent,
+      from: child,
+      replyTo: [],
+      content: "READY",
+      createdAt: 100,
+      reply: { commandId: "entry-goal-2", outcome: "completed" },
+    },
+  ]);
+  // A turn a reply mail started (replyTo empty) reports like any other turn.
+  const replyTurn = BirdDog.agentJob({
+    work: {
+      jobId: "job-reply-3",
+      sessionId: child.sessionId,
+      commandFactId: "entry-reply-3",
+    },
+    mail: {
+      key: "reply-3",
+      to: child,
+      from: parent,
+      replyTo: [],
+      content: "ack",
+      createdAt: 42,
+    },
+  });
+  expect(
+    settlementReplies(
+      {
+        job: { ...replyTurn, state: "settled", outcome: "completed" },
+        content: "READY",
+        delegator,
+      },
+      100,
+    ).map((mail) => mail.key),
+  ).toEqual(["delegation-1:report:entry-reply-3:0"]);
+});
+
+it("work a delegating mail admitted replies under its own key, never also as a report", () => {
+  const queued = BirdDog.agentJob({
+    work: {
+      jobId: "job-1",
+      sessionId: child.sessionId,
+      commandFactId: "entry-command-1",
+    },
+    mail: {
+      key: "delegation-1",
+      to: child,
+      from: parent,
+      replyTo: [parent],
+      content: "Investigate",
+      createdAt: 42,
+    },
+  });
+  expect(
+    settlementReplies(
+      {
+        job: { ...queued, state: "settled", outcome: "completed" },
+        content: "Done",
+        delegator,
+      },
+      100,
+    ).map((mail) => mail.key),
+  ).toEqual(["delegation-1:reply:0"]);
+});
+
+it("an empty failed turn's report names its diagnostic", () => {
+  const queued = BirdDog.agentJob({
+    work: {
+      jobId: "job-fail",
+      sessionId: child.sessionId,
+      commandFactId: "entry-fail",
+    },
+  });
+  const [report] = settlementReplies(
+    {
+      job: { ...queued, state: "settled", outcome: "failed" },
+      content: "",
+      diagnostic: "runtime:rejected: sandbox-busy",
+      delegator,
+    },
+    100,
+  );
+  expect(report?.content).toBe(
+    "The delegated work ended failed: runtime:rejected: sandbox-busy",
+  );
+  expect(report?.reply).toEqual({
+    commandId: "entry-fail",
+    outcome: "failed",
+    diagnostic: "runtime:rejected: sandbox-busy",
+  });
+});
+
+it("a report and a reply both name what waits on their recipient", () => {
+  const waitingOnYou = [
+    { itemId: "ask-1", kind: "question", summary: "Branch" },
+  ];
+  const goalTurn = BirdDog.agentJob({
+    work: {
+      jobId: "job-goal-4",
+      sessionId: child.sessionId,
+      commandFactId: "entry-goal-4",
+    },
+  });
+  const [report] = settlementReplies(
+    {
+      job: { ...goalTurn, state: "settled", outcome: "completed" },
+      content: "Asked which branch",
+      delegator,
+      waitingOnYou,
+    },
+    100,
+  );
+  expect(report?.key).toBe("delegation-1:report:entry-goal-4:0");
+  expect(report?.reply).toEqual({
+    commandId: "entry-goal-4",
+    outcome: "completed",
+    waitingOnYou,
+  });
+  const sent = BirdDog.agentJob({
+    work: {
+      jobId: "job-sent-5",
+      sessionId: child.sessionId,
+      commandFactId: "entry-sent-5",
+    },
+    mail: {
+      key: "delegation-5",
+      to: child,
+      from: parent,
+      replyTo: [parent],
+      content: "Ask me",
+      createdAt: 42,
+    },
+  });
+  const [reply] = settlementReplies(
+    {
+      job: { ...sent, state: "settled", outcome: "completed" },
+      content: "Asked",
+      waitingOnYou,
+    },
+    100,
+  );
+  expect(reply?.key).toBe("delegation-5:reply:0");
+  expect(reply?.reply).toMatchObject({ waitingOnYou });
+});

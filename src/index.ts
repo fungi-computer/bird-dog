@@ -51,6 +51,8 @@ export type BirdDogReply =
         | "outcome_unknown";
       /** Bounded terminal diagnostic for work that did not complete or cancel. */
       diagnostic?: string;
+      /** Open items of the replying Session that now wait on this recipient. */
+      waitingOnYou?: readonly BirdDogWaitingItem[];
     }>
   | Readonly<{
       outcome: "undeliverable";
@@ -166,10 +168,25 @@ export type BirdDogOptions = Readonly<{
   now: () => number;
 }>;
 
+/**
+ * Who sent a Session its work first: the mail that opened the relationship.
+ * `agentId` is the Session's own Agent, the author of every report.
+ */
+export type BirdDogDelegator = Readonly<{
+  key: string;
+  agentId: string;
+  replyTo: readonly BirdDogAgentReference[];
+}>;
+
 /** Completed generic work plus the content owed to its correspondents. */
 export type BirdDogSettlement = Readonly<{
   job: WatchdogSettledJob;
   content: string;
+  /**
+   * The Session's delegator of record, named only when this settlement leaves
+   * the Session idle. Work without a replying mail of its own reports to it.
+   */
+  delegator?: BirdDogDelegator;
   /**
    * The Session's recorded terminal diagnostic. Replies carry it, bounded by
    * `boundedDiagnostic`, only for failed, interrupted and outcome_unknown work.
@@ -180,6 +197,18 @@ export type BirdDogSettlement = Readonly<{
    * example, naming who cancelled). Replies never carry it.
    */
   meta?: BirdDogMeta;
+  /**
+   * Open items of the settled Session that now wait on the correspondent this
+   * work came from. Replies carry them beside the settlement facts.
+   */
+  waitingOnYou?: readonly BirdDogWaitingItem[];
+}>;
+
+/** One open item named by a reply as waiting on its recipient. */
+export type BirdDogWaitingItem = Readonly<{
+  itemId: string;
+  kind: string;
+  summary: string;
 }>;
 
 /** Durable reply delivery behind the mail-room interface. */

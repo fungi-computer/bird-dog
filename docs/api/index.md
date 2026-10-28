@@ -24,39 +24,115 @@ An ordinary agent Session address. Relationships between agents live elsewhere.
 
 ---
 
-### BirdDogMail
+### BirdDogAgentRecipientReference
 
 ```ts
-type BirdDogMail = Readonly<{
-  key: string;
-  to: BirdDogAgentReference;
-  from: BirdDogAgentReference;
-  replyTo: readonly BirdDogAgentReference[];
-  content: string;
-  createdAt: number;
-  meta?: BirdDogMeta;
-  reply?: BirdDogReply;
+type BirdDogAgentRecipientReference = Readonly<{
+  kind: "agent";
+  agentId: string;
+  sessionId?: string;
 }>;
 ```
 
-Addressed agent correspondence carried with durable work when a reply is owed.
+An addressed Agent whose first Session may be created on acceptance.
+
+---
+
+### BirdDogSystemIdentity
+
+```ts
+type BirdDogSystemIdentity = Readonly<{
+  kind: "system";
+  systemId: "hub";
+}>;
+```
+
+The Hub's stable system identity for a terminal offline disposition.
 
 ---
 
 ### BirdDogReply
 
 ```ts
-type BirdDogReply = Readonly<{
-  commandId: string;
-  outcome:
-    "completed" | "failed" | "interrupted" | "cancelled" | "outcome_unknown";
-  diagnostic?: string;
-}>;
+type BirdDogReply =
+  | Readonly<{
+      commandId: string;
+      outcome: "accepted";
+    }>
+  | Readonly<{
+      commandId: string;
+      outcome:
+        | "completed"
+        | "failed"
+        | "interrupted"
+        | "cancelled"
+        | "outcome_unknown";
+      diagnostic?: string;
+      waitingOnYou?: readonly BirdDogWaitingItem[];
+    }>
+  | Readonly<{
+      outcome: "undeliverable";
+      reason: "recipient_offline" | "recipient_left";
+    }>;
 ```
 
 What a reply reports about the settled work beside its content. The recipient's
 host trusts these facts only after it authenticates the reply against the mail
 it sent.
+
+---
+
+### BirdDogAgentReply
+
+```ts
+type BirdDogAgentReply =
+  | Exclude<
+      BirdDogReply,
+      {
+        outcome: "undeliverable";
+      }
+    >
+  | Readonly<{
+      outcome: "undeliverable";
+      reason: "recipient_left";
+    }>;
+```
+
+Facts an Agent may author; the Hub owns recipient-offline disposition.
+
+---
+
+### BirdDogMail
+
+```ts
+type BirdDogMail =
+  | Readonly<{
+      key: string;
+      to: BirdDogAgentRecipientReference;
+      replyTo: readonly BirdDogAgentReference[];
+      content: string;
+      createdAt: number;
+      meta?: BirdDogMeta;
+      from: BirdDogAgentReference;
+      reply?: BirdDogAgentReply;
+    }>
+  | Readonly<{
+      key: string;
+      to: BirdDogAgentRecipientReference;
+      replyTo: readonly BirdDogAgentReference[];
+      content: string;
+      createdAt: number;
+      meta?: BirdDogMeta;
+      from: BirdDogSystemIdentity;
+      reply: Readonly<{
+        outcome: "undeliverable";
+        reason: "recipient_offline";
+      }>;
+    }>;
+```
+
+Addressed correspondence. Agents author ordinary replies and recipient-left
+notices; only the Hub system authors recipient-offline dispositions.
 
 ---
 
@@ -154,18 +230,49 @@ Host ports for BirdDog's durable mail delivery.
 
 ---
 
+### BirdDogDelegator
+
+```ts
+type BirdDogDelegator = Readonly<{
+  key: string;
+  agentId: string;
+  replyTo: readonly BirdDogAgentReference[];
+}>;
+```
+
+Who sent a Session its work first: the mail that opened the relationship.
+`agentId` is the Session's own Agent, the author of every report.
+
+---
+
 ### BirdDogSettlement
 
 ```ts
 type BirdDogSettlement = Readonly<{
   job: WatchdogSettledJob;
   content: string;
+  delegator?: BirdDogDelegator;
   diagnostic?: string;
   meta?: BirdDogMeta;
+  waitingOnYou?: readonly BirdDogWaitingItem[];
 }>;
 ```
 
 Completed generic work plus the content owed to its correspondents.
+
+---
+
+### BirdDogWaitingItem
+
+```ts
+type BirdDogWaitingItem = Readonly<{
+  itemId: string;
+  kind: string;
+  summary: string;
+}>;
+```
+
+One open item named by a reply as waiting on its recipient.
 
 ---
 
@@ -203,3 +310,24 @@ const BirdDog: BirdDogApi;
 ```
 
 Agent-aware mail translation over Watchdog's payload-blind job grammar.
+
+## Functions
+
+### undeliverableReply()
+
+```ts
+function undeliverableReply(original, createdAt): BirdDogMail;
+```
+
+Construct the one stable system reply correlated to the exact sent letter.
+
+#### Parameters
+
+| Parameter   | Type                          |
+| ----------- | ----------------------------- |
+| `original`  | [`BirdDogMail`](#birddogmail) |
+| `createdAt` | `number`                      |
+
+#### Returns
+
+[`BirdDogMail`](#birddogmail)

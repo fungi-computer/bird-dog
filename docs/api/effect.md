@@ -89,6 +89,7 @@ Effect host ports for the durable mail room.
 ```ts
 type BirdDogEffect = Readonly<{
   fanOut: (settlement) => Effect.Effect<void, BirdDogError>;
+  postMail?: (mail) => Effect.Effect<void, BirdDogError>;
   drainOutbox: () => Effect.Effect<void, BirdDogError>;
   nextWakeAt: () => Effect.Effect<number | undefined, BirdDogError>;
 }>;
@@ -97,6 +98,16 @@ type BirdDogEffect = Readonly<{
 Effect-native durable reply delivery.
 
 ## Variables
+
+### BIRD\_DOG\_MAIL\_CONTENT\_MAX\_BYTES
+
+```ts
+const BIRD_DOG_MAIL_CONTENT_MAX_BYTES: number;
+```
+
+The maximum UTF-8 size of one mail body.
+
+---
 
 ### BirdDogAgentReferenceSchema
 
@@ -112,6 +123,33 @@ Parser for an ordinary agent Session address.
 
 ---
 
+### BirdDogAgentRecipientReferenceSchema
+
+```ts
+const BirdDogAgentRecipientReferenceSchema: Struct<{
+  kind: Literal<"agent">;
+  agentId: String;
+  sessionId: optionalKey<String>;
+}>;
+```
+
+An addressed Agent may create its first Session when accepting this mail.
+
+---
+
+### BirdDogSystemIdentitySchema
+
+```ts
+const BirdDogSystemIdentitySchema: Struct<{
+  kind: Literal<"system">;
+  systemId: Literal<"hub">;
+}>;
+```
+
+The Hub's stable system identity for a terminal offline disposition.
+
+---
+
 ### BIRD\_DOG\_DIAGNOSTIC\_MAX\_LENGTH
 
 ```ts
@@ -122,10 +160,36 @@ The most characters a reply's failure diagnostic may carry.
 
 ---
 
-### BirdDogReplySchema
+### BIRD\_DOG\_WAITING\_MAX\_ITEMS
 
 ```ts
-const BirdDogReplySchema: Struct<{
+const BIRD_DOG_WAITING_MAX_ITEMS: 8 = 8;
+```
+
+The most open items one reply names as waiting on its recipient.
+
+---
+
+### BirdDogWaitingItemSchema
+
+```ts
+const BirdDogWaitingItemSchema: Struct<{
+  itemId: String;
+  kind: String;
+  summary: String;
+}>;
+```
+
+One open item of the replying Session that waits on this reply's recipient.
+BirdDog carries the three bounded fields; the replying host owns their meaning
+and the recipient host owns every decision about them.
+
+---
+
+### SettledBirdDogReplySchema
+
+```ts
+const SettledBirdDogReplySchema: Struct<{
   commandId: String;
   outcome: Literals<
     readonly [
@@ -137,41 +201,68 @@ const BirdDogReplySchema: Struct<{
     ]
   >;
   diagnostic: optionalKey<String>;
+  waitingOnYou: optionalKey<
+    $Array<
+      Struct<{
+        itemId: String;
+        kind: String;
+        summary: String;
+      }>
+    >
+  >;
 }>;
 ```
 
 Parser for the settlement facts a reply carries beside its content: the replying
-Session's command, its exact Watchdog outcome and, for work that did not
-complete, the Session's bounded terminal diagnostic.
+Session's command, its exact Watchdog outcome, for work that did not complete
+the Session's bounded terminal diagnostic and, when the replying host names any,
+the open items now waiting on the recipient.
 
 ---
 
-### BirdDogMailSchema
+### BirdDogUndeliverableReasonSchema
 
 ```ts
-const BirdDogMailSchema: Struct<{
-  key: String;
-  to: Struct<{
-    kind: Literal<"agent">;
-    agentId: String;
-    sessionId: String;
-  }>;
-  from: Struct<{
-    kind: Literal<"agent">;
-    agentId: String;
-    sessionId: String;
-  }>;
-  replyTo: $Array<
-    Struct<{
-      kind: Literal<"agent">;
-      agentId: String;
-      sessionId: String;
-    }>
-  >;
-  content: String;
-  createdAt: Number;
-  meta: optionalKey<Codec<Json, Json, never, never>>;
-  reply: optionalKey<
+const BirdDogUndeliverableReasonSchema: Literals<
+  readonly ["recipient_offline", "recipient_left"]
+>;
+```
+
+A terminal delivery failure, correlated by the original mail key only.
+
+---
+
+### UndeliverableBirdDogReplySchema
+
+```ts
+const UndeliverableBirdDogReplySchema: Struct<{
+  outcome: Literal<"undeliverable">;
+  reason: Literals<readonly ["recipient_offline", "recipient_left"]>;
+}>;
+```
+
+Parser for a terminal delivery failure reply.
+
+---
+
+### AcceptedBirdDogReplySchema
+
+```ts
+const AcceptedBirdDogReplySchema: Struct<{
+  outcome: Literal<"accepted">;
+  commandId: String;
+}>;
+```
+
+Recipient acceptance, before the command has settled.
+
+---
+
+### BirdDogReplySchema
+
+```ts
+const BirdDogReplySchema: Union<
+  readonly [
     Struct<{
       commandId: String;
       outcome: Literals<
@@ -184,12 +275,94 @@ const BirdDogMailSchema: Struct<{
         ]
       >;
       diagnostic: optionalKey<String>;
-    }>
-  >;
-}>;
+      waitingOnYou: optionalKey<
+        $Array<
+          Struct<{
+            itemId: String;
+            kind: String;
+            summary: String;
+          }>
+        >
+      >;
+    }>,
+    Struct<{
+      outcome: Literal<"undeliverable">;
+      reason: Literals<readonly ["recipient_offline", "recipient_left"]>;
+    }>,
+    Struct<{
+      outcome: Literal<"accepted">;
+      commandId: String;
+    }>,
+  ]
+>;
 ```
 
-Parser for addressed agent correspondence.
+Parser for any reply: settled, accepted or undeliverable.
+
+---
+
+### BirdDogMailSchema
+
+```ts
+const BirdDogMailSchema: Union<readonly [Struct<{
+  key: String;
+  to: Struct<{
+     kind: Literal<"agent">;
+     agentId: String;
+     sessionId: optionalKey<String>;
+  }>;
+  replyTo: $Array<Struct<{
+     kind: Literal<"agent">;
+     agentId: String;
+     sessionId: String;
+  }>>;
+  content: String;
+  createdAt: Number;
+  meta: optionalKey<Codec<Json, Json, never, never>>;
+  from: Struct<{
+     kind: Literal<"agent">;
+     agentId: String;
+     sessionId: String;
+  }>;
+  reply: optionalKey<Union<readonly [Struct<{
+     commandId: String;
+     outcome: Literals<readonly [..., ..., ..., ..., ...]>;
+     diagnostic: optionalKey<String>;
+     waitingOnYou: optionalKey<$Array<...>>;
+   }>, Struct<{
+     outcome: Literal<"accepted">;
+     commandId: String;
+   }>, Struct<{
+     outcome: Literal<"undeliverable">;
+     reason: Literal<"recipient_left">;
+  }>]>>;
+}>, Struct<{
+  key: String;
+  to: Struct<{
+     kind: Literal<"agent">;
+     agentId: String;
+     sessionId: optionalKey<String>;
+  }>;
+  replyTo: $Array<Struct<{
+     kind: Literal<"agent">;
+     agentId: String;
+     sessionId: String;
+  }>>;
+  content: String;
+  createdAt: Number;
+  meta: optionalKey<Codec<Json, Json, never, never>>;
+  from: Struct<{
+     kind: Literal<"system">;
+     systemId: Literal<"hub">;
+  }>;
+  reply: Struct<{
+     outcome: Literal<"undeliverable">;
+     reason: Literal<"recipient_offline">;
+  }>;
+}>]>;
+```
+
+Parser for addressed Agent mail, from an Agent or from the Hub system.
 
 ---
 
@@ -217,49 +390,54 @@ Parser for accepted Session work.
 ```ts
 const BirdDogAgentJobPayloadSchema: Struct<{
   work: Struct<{
-    sessionId: String;
-    commandFactId: String;
+     sessionId: String;
+     commandFactId: String;
   }>;
-  mail: optional<
-    Struct<{
-      key: String;
-      to: Struct<{
+  mail: optional<Union<readonly [Struct<{
+     key: String;
+     to: Struct<{
+        kind: Literal<"agent">;
+        agentId: String;
+        sessionId: optionalKey<String>;
+     }>;
+     replyTo: $Array<Struct<{
+        kind: Literal<...>;
+        agentId: String;
+        sessionId: String;
+     }>>;
+     content: String;
+     createdAt: Number;
+     meta: optionalKey<Codec<Json, Json, never, never>>;
+     from: Struct<{
         kind: Literal<"agent">;
         agentId: String;
         sessionId: String;
-      }>;
-      from: Struct<{
+     }>;
+     reply: optionalKey<Union<readonly [Struct<...>, Struct<...>, Struct<...>]>>;
+   }>, Struct<{
+     key: String;
+     to: Struct<{
         kind: Literal<"agent">;
         agentId: String;
+        sessionId: optionalKey<String>;
+     }>;
+     replyTo: $Array<Struct<{
+        kind: Literal<...>;
+        agentId: String;
         sessionId: String;
-      }>;
-      replyTo: $Array<
-        Struct<{
-          kind: Literal<"agent">;
-          agentId: String;
-          sessionId: String;
-        }>
-      >;
-      content: String;
-      createdAt: Number;
-      meta: optionalKey<Codec<Json, Json, never, never>>;
-      reply: optionalKey<
-        Struct<{
-          commandId: String;
-          outcome: Literals<
-            readonly [
-              "completed",
-              "failed",
-              "interrupted",
-              "cancelled",
-              "outcome_unknown",
-            ]
-          >;
-          diagnostic: optionalKey<String>;
-        }>
-      >;
-    }>
-  >;
+     }>>;
+     content: String;
+     createdAt: Number;
+     meta: optionalKey<Codec<Json, Json, never, never>>;
+     from: Struct<{
+        kind: Literal<"system">;
+        systemId: Literal<"hub">;
+     }>;
+     reply: Struct<{
+        outcome: Literal<"undeliverable">;
+        reason: Literal<"recipient_offline">;
+     }>;
+  }>]>>;
 }>;
 ```
 
@@ -272,55 +450,58 @@ Parser for the payload that Watchdog stores without interpretation.
 ```ts
 const BirdDogAgentJobInputSchema: Struct<{
   work: Struct<{
-    jobId: String;
-    sessionId: String;
-    commandFactId: String;
-    recovery: optional<
-      Struct<{
+     jobId: String;
+     sessionId: String;
+     commandFactId: String;
+     recovery: optional<Struct<{
         maxRecoveries: Int;
-      }>
-    >;
+     }>>;
   }>;
-  mail: optional<
-    Struct<{
-      key: String;
-      to: Struct<{
+  mail: optional<Union<readonly [Struct<{
+     key: String;
+     to: Struct<{
+        kind: Literal<"agent">;
+        agentId: String;
+        sessionId: optionalKey<String>;
+     }>;
+     replyTo: $Array<Struct<{
+        kind: Literal<...>;
+        agentId: String;
+        sessionId: String;
+     }>>;
+     content: String;
+     createdAt: Number;
+     meta: optionalKey<Codec<Json, Json, never, never>>;
+     from: Struct<{
         kind: Literal<"agent">;
         agentId: String;
         sessionId: String;
-      }>;
-      from: Struct<{
+     }>;
+     reply: optionalKey<Union<readonly [Struct<...>, Struct<...>, Struct<...>]>>;
+   }>, Struct<{
+     key: String;
+     to: Struct<{
         kind: Literal<"agent">;
         agentId: String;
+        sessionId: optionalKey<String>;
+     }>;
+     replyTo: $Array<Struct<{
+        kind: Literal<...>;
+        agentId: String;
         sessionId: String;
-      }>;
-      replyTo: $Array<
-        Struct<{
-          kind: Literal<"agent">;
-          agentId: String;
-          sessionId: String;
-        }>
-      >;
-      content: String;
-      createdAt: Number;
-      meta: optionalKey<Codec<Json, Json, never, never>>;
-      reply: optionalKey<
-        Struct<{
-          commandId: String;
-          outcome: Literals<
-            readonly [
-              "completed",
-              "failed",
-              "interrupted",
-              "cancelled",
-              "outcome_unknown",
-            ]
-          >;
-          diagnostic: optionalKey<String>;
-        }>
-      >;
-    }>
-  >;
+     }>>;
+     content: String;
+     createdAt: Number;
+     meta: optionalKey<Codec<Json, Json, never, never>>;
+     from: Struct<{
+        kind: Literal<"system">;
+        systemId: Literal<"hub">;
+     }>;
+     reply: Struct<{
+        outcome: Literal<"undeliverable">;
+        reason: Literal<"recipient_offline">;
+     }>;
+  }>]>>;
 }>;
 ```
 
@@ -406,35 +587,20 @@ Decode the opaque payload at BirdDog's side of the Watchdog seam.
 ### settlementReplies()
 
 ```ts
-function settlementReplies(
-  settlement,
-  createdAt,
-): readonly Readonly<{
-  key: string;
-  to: BirdDogAgentReference;
-  from: BirdDogAgentReference;
-  replyTo: readonly Readonly<{
-    kind: "agent";
-    agentId: string;
-    sessionId: string;
-  }>[];
-  content: string;
-  createdAt: number;
-  meta?: Json;
-  reply?: Readonly<{
-    commandId: string;
-    outcome:
-      "failed" | "completed" | "interrupted" | "cancelled" | "outcome_unknown";
-    diagnostic?: string;
-  }>;
-}>[];
+function settlementReplies(settlement, createdAt): readonly BirdDogMail[];
 ```
 
 Build the replies owed by one settlement for a host-owned Post transport. Each
 reply carries the settled content verbatim (or, when there is none, one sentence
-naming the outcome, so the reply is always admissible text) and its settlement
-facts as typed fields; the recipient's host authenticates them and decides how
-they are presented. A reply never carries the settled work's host metadata.
+naming the outcome and its diagnostic, so the reply is always admissible text)
+and its settlement facts as typed fields; the recipient's host authenticates
+them and decides how they are presented. A reply never carries the settled
+work's host metadata.
+
+Work a delegator's mail admitted replies to that mail under its `:reply:` key.
+Any other settled work, whatever started its turn, is a report to the Session's
+delegator of record, when the host names one (it does so once the Session is
+idle), under the delegator mail's `:report:` key.
 
 #### Parameters
 
@@ -445,14 +611,30 @@ they are presented. A reply never carries the settled work's host metadata.
 
 #### Returns
 
-readonly `Readonly`\<\{ `key`: `string`; `to`:
-[`BirdDogAgentReference`](index.md#birddogagentreference); `from`:
-[`BirdDogAgentReference`](index.md#birddogagentreference); `replyTo`: readonly
-`Readonly`\<\{ `kind`: `"agent"`; `agentId`: `string`; `sessionId`: `string`;
-\}\>[]; `content`: `string`; `createdAt`: `number`; `meta?`: `Json`; `reply?`:
-`Readonly`\<\{ `commandId`: `string`; `outcome`: `"failed"` \| `"completed"` \|
-`"interrupted"` \| `"cancelled"` \| `"outcome_unknown"`; `diagnostic?`:
-`string`; \}\>; \}\>[]
+readonly [`BirdDogMail`](index.md#birddogmail)[]
+
+---
+
+### acceptedNotice()
+
+```ts
+function acceptedNotice(mail, sessionId, commandId, createdAt): BirdDogMail;
+```
+
+Build the recipient's one stable acceptance notice for one original mail.
+
+#### Parameters
+
+| Parameter   | Type                                  |
+| ----------- | ------------------------------------- |
+| `mail`      | [`BirdDogMail`](index.md#birddogmail) |
+| `sessionId` | `string`                              |
+| `commandId` | `string`                              |
+| `createdAt` | `number`                              |
+
+#### Returns
+
+[`BirdDogMail`](index.md#birddogmail)
 
 ---
 
@@ -483,6 +665,7 @@ Delivered receipts and exhausted dead letters stay but owe nothing.
 function make(options): Effect<
   Readonly<{
     fanOut: (settlement) => Effect<void, BirdDogError>;
+    postMail?: (mail) => Effect<void, BirdDogError>;
     drainOutbox: () => Effect<void, BirdDogError>;
     nextWakeAt: () => Effect<number | undefined, BirdDogError>;
   }>
@@ -500,6 +683,7 @@ Construct BirdDog's Effect-native mail room over Post's shared outbox.
 #### Returns
 
 `Effect`\<`Readonly`\<\{ `fanOut`: (`settlement`) => `Effect`\<`void`,
+[`BirdDogError`](#birddogerror)\>; `postMail?`: (`mail`) => `Effect`\<`void`,
 [`BirdDogError`](#birddogerror)\>; `drainOutbox`: () => `Effect`\<`void`,
 [`BirdDogError`](#birddogerror)\>; `nextWakeAt`: () => `Effect`\<`number` \|
 `undefined`, [`BirdDogError`](#birddogerror)\>; \}\>\>
