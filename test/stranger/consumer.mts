@@ -20,6 +20,7 @@ const mail: BirdDogMail = {
   createdAt: 1,
 };
 const job = BirdDog.agentJob({
+  delivery: "followUp",
   work: {
     jobId: "job-stranger",
     sessionId: address.sessionId,

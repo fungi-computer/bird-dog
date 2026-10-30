@@ -11,6 +11,7 @@ const room = await BirdDog.make({
 });
 
 const job = BirdDog.agentJob({
+  delivery: "followUp",
   work: { jobId: "job-1", sessionId: child.sessionId, commandFactId: "cmd-1" },
   mail: {
     key: "d-1",

@@ -231,6 +231,7 @@ export const BirdDogAgentJobPayloadSchema = Schema.Struct({
 /** Parser for accepted work entering BirdDog's transactional projection. */
 export const BirdDogAgentJobInputSchema = Schema.Struct({
   work: BirdDogAgentWorkSchema,
+  delivery: Schema.Literals(["steer", "followUp"]),
   mail: Schema.optional(BirdDogMailSchema),
 });
 
@@ -299,7 +300,7 @@ export const agentJobFromInput = (
     jobId: accepted.work.jobId,
     queue: accepted.work.sessionId,
     lane: "default",
-    priority: 0,
+    priority: accepted.delivery === "steer" ? 1 : 0,
     payload,
     state: "queued",
   } as const;

@@ -68,7 +68,7 @@
           {
             "title": "Install",
             "href": "/install/",
-            "description": "Entrypoints, peer packages (Watchdog, Carrier) and Node version."
+            "description": "Entrypoints, runtime dependencies (Watchdog, Carrier) and Node version."
           },
           {
             "title": "Status and limits",

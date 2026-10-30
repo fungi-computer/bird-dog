@@ -138,6 +138,7 @@ export type BirdDogAgentJobPayload = Readonly<{
 /** Input for projecting accepted agent work into Watchdog's generic grammar. */
 export type BirdDogAgentJobInput = Readonly<{
   work: BirdDogAgentWork;
+  delivery: "steer" | "followUp";
   mail?: BirdDogMail | undefined;
 }>;
 

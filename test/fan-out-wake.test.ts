@@ -16,6 +16,7 @@ it("persists every reply before a fan-out wake failure", async () => {
     now: () => 100,
   });
   const job = BirdDog.agentJob({
+    delivery: "followUp",
     work: { jobId: "work", sessionId: "session", commandFactId: "command" },
     mail: {
       key: "request",

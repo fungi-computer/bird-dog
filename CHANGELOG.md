@@ -1,5 +1,13 @@
 # @fungi.computer/bird-dog
 
+## 0.3.1
+
+### Patch Changes
+
+- Changes since 0.3.0:
+
+  - fix(shiitake): settle hung runs and route ancestor reports one-way
+
 ## 0.3.0
 
 ### Minor Changes

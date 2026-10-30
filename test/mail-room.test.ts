@@ -34,6 +34,7 @@ it("translates ordinary agent mail into one opaque default-lane job", () => {
     createdAt: 42,
   } as const;
   const job = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-1",
       sessionId: child.sessionId,
@@ -103,6 +104,7 @@ it("replayed settlement never re-sends a completed reply after mail-room reopen"
   };
   const room = await BirdDog.make(options);
   const queued = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-1",
       sessionId: child.sessionId,
@@ -163,6 +165,7 @@ it.each(["failed", "interrupted", "outcome_unknown"] as const)(
       now: () => 100,
     };
     const queued = BirdDog.agentJob({
+      delivery: "followUp",
       work: {
         jobId: `job-${outcome}`,
         sessionId: child.sessionId,
@@ -209,6 +212,7 @@ it.each(["failed", "interrupted", "outcome_unknown"] as const)(
 
 it("drops a diagnostic from completed and cancelled replies", () => {
   const queued = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-quiet",
       sessionId: child.sessionId,
@@ -277,6 +281,7 @@ it("delivers an explicit cancelled result to the parent once", async () => {
     now: () => 100,
   });
   const queued = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-cancelled",
       sessionId: child.sessionId,
@@ -335,6 +340,7 @@ it("re-arms a persisted future retry after the mail room reopens", async () => {
   };
   const first = await BirdDog.make(options);
   const queued = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-retry",
       sessionId: child.sessionId,
@@ -381,6 +387,7 @@ it("continues bounded drains past a full ready page", async () => {
     now: () => 100,
   });
   const base = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-page",
       sessionId: child.sessionId,
@@ -589,6 +596,7 @@ it("preserves retry state across duplicate and exhausted recovery", async () => 
     now: () => 100,
   });
   const queued = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-idempotent",
       sessionId: child.sessionId,
@@ -678,6 +686,7 @@ it("keeps the host's original failure as the cause of a mail room error", async 
     now: () => 100,
   });
   const queued = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-cause",
       sessionId: child.sessionId,
@@ -721,6 +730,7 @@ const delegator = {
 
 it("a goal turn after the sent command reports to the sender when the Session goes idle", () => {
   const goalTurn = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-goal-2",
       sessionId: child.sessionId,
@@ -750,6 +760,7 @@ it("a goal turn after the sent command reports to the sender when the Session go
   ]);
   // A turn a reply mail started (replyTo empty) reports like any other turn.
   const replyTurn = BirdDog.agentJob({
+    delivery: "steer",
     work: {
       jobId: "job-reply-3",
       sessionId: child.sessionId,
@@ -778,6 +789,7 @@ it("a goal turn after the sent command reports to the sender when the Session go
 
 it("work a delegating mail admitted replies under its own key, never also as a report", () => {
   const queued = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-1",
       sessionId: child.sessionId,
@@ -806,6 +818,7 @@ it("work a delegating mail admitted replies under its own key, never also as a r
 
 it("an empty failed turn's report names its diagnostic", () => {
   const queued = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-fail",
       sessionId: child.sessionId,
@@ -836,6 +849,7 @@ it("a report and a reply both name what waits on their recipient", () => {
     { itemId: "ask-1", kind: "question", summary: "Branch" },
   ];
   const goalTurn = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-goal-4",
       sessionId: child.sessionId,
@@ -858,6 +872,7 @@ it("a report and a reply both name what waits on their recipient", () => {
     waitingOnYou,
   });
   const sent = BirdDog.agentJob({
+    delivery: "followUp",
     work: {
       jobId: "job-sent-5",
       sessionId: child.sessionId,

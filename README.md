@@ -74,6 +74,7 @@ const room = await BirdDog.make({
 
 // 1. Turn accepted work into a Watchdog job. Hand this to Watchdog's ingest.
 const job = BirdDog.agentJob({
+  delivery: "followUp",
   work: {
     jobId: "job-1",
     sessionId: child.sessionId,
@@ -114,14 +115,14 @@ are 1 to 256 characters. There is no special kind for subagents.
 must identify the request across retries. BirdDog derives every reply key from
 it.
 
-**Agent jobs.** `BirdDog.agentJob({ work, mail? })` validates the input and
-returns a queued Watchdog job. The job's `queue` is the target `sessionId`, its
-lane is `default`, its priority is `0`, and its payload carries the `sessionId`,
-the `commandFactId` and the optional mail. `work.recovery` passes straight
-through to Watchdog's recovery policy. Because it is synchronous, you can call
-it inside an owner transaction and pass the result to Watchdog's
-`transactional.enqueueAcceptedJob`. `BirdDog.decodeAgentJob(job)` parses the
-payload back on the executor side. Watchdog never reads it.
+**Agent jobs.** `BirdDog.agentJob({ work, delivery, mail? })` validates the
+input and returns a queued Watchdog job. The job's `queue` is the target
+`sessionId`, its lane is `default`, its priority is `0`, and its payload carries
+the `sessionId`, the `commandFactId` and the optional mail. `work.recovery`
+passes straight through to Watchdog's recovery policy. Because it is
+synchronous, you can call it inside an owner transaction and pass the result to
+Watchdog's `transactional.enqueueAcceptedJob`. `BirdDog.decodeAgentJob(job)`
+parses the payload back on the executor side. Watchdog never reads it.
 
 **Fan-out.** `fanOut({ job, content, diagnostic? })` takes a settled job, the
 content owed to correspondents and the Session's terminal diagnostic. It writes
