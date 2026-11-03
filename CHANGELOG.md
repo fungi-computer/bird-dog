@@ -1,5 +1,11 @@
 # @fungi.computer/bird-dog
 
+## 0.3.2
+
+### Patch Changes
+
+- @fungi.computer/carrier@0.2.1
+
 ## 0.3.1
 
 ### Patch Changes
