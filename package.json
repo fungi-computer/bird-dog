@@ -1,6 +1,6 @@
 {
   "name": "@fungi.computer/bird-dog",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": "Levi <levi@technomancy.dev>",
   "description": "Durable addressed agent mail over generic Watchdog work",
   "type": "module",

@@ -1,5 +1,13 @@
 # @fungi.computer/bird-dog
 
+## 0.3.3
+
+### Patch Changes
+
+- Changes since 0.3.2:
+
+  - fix(docs): gate Bird-dog Shiitake and Seam API freshness
+
 ## 0.3.2
 
 ### Patch Changes

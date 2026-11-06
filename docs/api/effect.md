@@ -457,6 +457,7 @@ const BirdDogAgentJobInputSchema: Struct<{
         maxRecoveries: Int;
      }>>;
   }>;
+  delivery: Literals<readonly ["steer", "followUp"]>;
   mail: optional<Union<readonly [Struct<{
      key: String;
      to: Struct<{

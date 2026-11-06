@@ -184,6 +184,7 @@ Typed payload whose meaning belongs to BirdDog, never Watchdog.
 ```ts
 type BirdDogAgentJobInput = Readonly<{
   work: BirdDogAgentWork;
+  delivery: "steer" | "followUp";
   mail?: BirdDogMail;
 }>;
 ```
