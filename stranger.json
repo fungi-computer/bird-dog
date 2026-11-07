@@ -13,7 +13,7 @@
     "package/docs/api/index.md",
     "package/package.json"
   ],
-  "localDependencies": ["../watchdog", "../carrier"],
+  "localDependencies": ["../watchdog"],
   "runtimeFixture": "test/stranger/runtime.mjs",
   "typechecks": [
     {

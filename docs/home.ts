@@ -1,12 +1,12 @@
 import { BirdDog, type BirdDogMail } from "@fungi.computer/bird-dog";
-import { createMemoryOutbox } from "@fungi.computer/carrier/testing";
 
 const parent = { kind: "agent", agentId: "parent", sessionId: "p" } as const;
 const child = { kind: "agent", agentId: "child", sessionId: "c" } as const;
 const room = await BirdDog.make({
-  outbox: createMemoryOutbox(),
-  post: async (mail: BirdDogMail) => (console.log(mail.content), true),
-  scheduleWake: async () => {},
+  // The host stages this batch in its existing Carrier Post transaction.
+  stage: async (mail: readonly BirdDogMail[]) => {
+    for (const reply of mail) console.log(reply.content);
+  },
   now: () => Date.now(),
 });
 
@@ -26,4 +26,3 @@ await room.fanOut({
   job: { ...job, state: "settled", outcome: "completed" },
   content: "Fixed it.",
 });
-await room.drainOutbox(); // post() prints the reply header, then "Fixed it."

@@ -1,5 +1,18 @@
 # @fungi.computer/bird-dog
 
+## 0.3.4
+
+### Patch Changes
+
+- Changes since 0.3.3:
+
+  - fix(durability): give Watchdog delivery and timer readiness
+  - fix(durability): preserve retry decisions and drain ownership across restart
+  - fix(subagents): retain promotion reasons and join Pi timers
+
+- Updated dependencies
+  - @fungi.computer/watchdog@0.1.1
+
 ## 0.3.3
 
 ### Patch Changes

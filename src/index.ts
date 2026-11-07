@@ -123,7 +123,7 @@ export type BirdDogAgentWork = Readonly<{
   jobId: string;
   sessionId: string;
   commandFactId: string;
-  recovery?: Readonly<{ maxRecoveries: number }> | undefined;
+  recovery?: Readonly<{ maxRecoveries: number; windowMs?: number }> | undefined;
 }>;
 
 /** Typed payload whose meaning belongs to BirdDog, never Watchdog. */
@@ -142,30 +142,11 @@ export type BirdDogAgentJobInput = Readonly<{
   mail?: BirdDogMail | undefined;
 }>;
 
-/** String-backed durable outbox owned by the BirdDog host. */
-export type BirdDogOutbox = Readonly<{
-  /** Store one encoded mail row under its durable key. */
-  put: (key: string, value: string) => Promise<void>;
-  /** Read one encoded mail row, if it exists. */
-  read: (key: string) => Promise<string | undefined>;
-  /** Read an ordered page of encoded mail rows. */
-  list: (
-    limit: number,
-    afterKey?: string,
-  ) => Promise<readonly Readonly<{ key: string; value: string }>[]>;
-  /** Remove an invalid encoded row; completed deliveries retain receipts. */
-  delete: (key: string) => Promise<void>;
-}>;
-
-/** Host ports for BirdDog's durable mail delivery. */
+/** Host ports for reply staging in its existing Carrier Post owner. */
 export type BirdDogOptions = Readonly<{
-  /** Durable store for pending reply mail. */
-  outbox: BirdDogOutbox;
-  /** Deliver one reply mail and report whether it was accepted. */
-  post: (mail: BirdDogMail) => Promise<boolean>;
-  /** Arrange a future wake for pending delivery work. */
-  scheduleWake: (at: number) => Promise<void>;
-  /** Return the host's current wall-clock time in milliseconds. */
+  /** Commit the complete reply batch through the host delivery owner. */
+  stage: (mail: readonly BirdDogMail[]) => Promise<void>;
+  /** Current time used when constructing a new reply. */
   now: () => number;
 }>;
 
@@ -216,8 +197,6 @@ export type BirdDogWaitingItem = Readonly<{
 export type BirdDogRuntime = Readonly<{
   /** Queue replies owed by a settled agent job. */
   fanOut: (settlement: BirdDogSettlement) => Promise<void>;
-  /** Deliver due replies and schedule any required retry wake. */
-  drainOutbox: () => Promise<void>;
 }>;
 
 /** BirdDog's small synchronous translation interface for owner transactions. */

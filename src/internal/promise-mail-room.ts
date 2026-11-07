@@ -21,47 +21,12 @@ const runPromise = <Value>(
 export const createPromiseBirdDog: BirdDogApi["make"] = async (
   options,
 ): Promise<BirdDogRuntime> => {
-  const readOutbox = options.outbox.read;
-  const readPort = {
-    read: (key: string) =>
-      Effect.tryPromise({
-        try: () => readOutbox(key),
-        catch: (cause) => new BirdDogError("outbox read failed", { cause }),
-      }),
-  };
   const runtime = await Effect.runPromise(
     make({
-      outbox: {
-        ...readPort,
-        put: (key, value) =>
-          Effect.tryPromise({
-            try: () => options.outbox.put(key, value),
-            catch: (cause) =>
-              new BirdDogError("outbox write failed", { cause }),
-          }),
-        list: (limit, afterKey) =>
-          Effect.tryPromise({
-            try: () => options.outbox.list(limit, afterKey),
-            catch: (cause) => new BirdDogError("outbox read failed", { cause }),
-          }),
-        delete: (key) =>
-          Effect.tryPromise({
-            try: () => options.outbox.delete(key),
-            catch: (cause) =>
-              new BirdDogError("outbox delete failed", { cause }),
-          }),
-      },
-      post: (mail: BirdDogMail) =>
+      stage: (mail: readonly BirdDogMail[]) =>
         Effect.tryPromise({
-          try: () => options.post(mail),
-          catch: (cause) =>
-            new BirdDogError("mail transport failed", { cause }),
-        }),
-      scheduleWake: (at) =>
-        Effect.tryPromise({
-          try: () => options.scheduleWake(at),
-          catch: (cause) =>
-            new BirdDogError("wake scheduling failed", { cause }),
+          try: () => options.stage(mail),
+          catch: (cause) => new BirdDogError("mail staging failed", { cause }),
         }),
       now: options.now,
     }),
@@ -69,6 +34,5 @@ export const createPromiseBirdDog: BirdDogApi["make"] = async (
 
   return Object.freeze({
     fanOut: (settlement) => runPromise(runtime.fanOut(settlement)),
-    drainOutbox: () => runPromise(runtime.drainOutbox()),
   });
 };

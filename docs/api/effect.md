@@ -59,28 +59,12 @@ Stable discriminator for BirdDog-owned effect failures.
 
 ```ts
 type EffectBirdDogOptions = Readonly<{
-  outbox: Readonly<{
-    put: (key, value) => Effect.Effect<void, BirdDogError>;
-    read: (key) => Effect.Effect<string | undefined, BirdDogError>;
-    list: (
-      limit,
-      afterKey?,
-    ) => Effect.Effect<
-      readonly Readonly<{
-        key: string;
-        value: string;
-      }>[],
-      BirdDogError
-    >;
-    delete: (key) => Effect.Effect<void, BirdDogError>;
-  }>;
-  post: (mail) => Effect.Effect<boolean, BirdDogError>;
-  scheduleWake: (at) => Effect.Effect<void, BirdDogError>;
+  stage: (mail) => Effect.Effect<void, BirdDogError>;
   now: () => number;
 }>;
 ```
 
-Effect host ports for the durable mail room.
+Durable staging belongs to the host's existing Carrier Post transaction.
 
 ---
 
@@ -90,12 +74,10 @@ Effect host ports for the durable mail room.
 type BirdDogEffect = Readonly<{
   fanOut: (settlement) => Effect.Effect<void, BirdDogError>;
   postMail?: (mail) => Effect.Effect<void, BirdDogError>;
-  drainOutbox: () => Effect.Effect<void, BirdDogError>;
-  nextWakeAt: () => Effect.Effect<number | undefined, BirdDogError>;
 }>;
 ```
 
-Effect-native durable reply delivery.
+Agent reply construction and durable staging; Watchdog owns delivery progress.
 
 ## Variables
 
@@ -376,6 +358,7 @@ const BirdDogAgentWorkSchema: Struct<{
   recovery: optional<
     Struct<{
       maxRecoveries: Int;
+      windowMs: optionalKey<Int>;
     }>
   >;
 }>;
@@ -455,6 +438,7 @@ const BirdDogAgentJobInputSchema: Struct<{
      commandFactId: String;
      recovery: optional<Struct<{
         maxRecoveries: Int;
+        windowMs: optionalKey<Int>;
      }>>;
   }>;
   delivery: Literals<readonly ["steer", "followUp"]>;
@@ -560,8 +544,10 @@ Validate and translate agent work into Watchdog's opaque job grammar.
 | `lane`                   | `string`   |
 | `priority`               | `number`   |
 | `payload`                | `unknown`  |
+| `notBefore?`             | `number`   |
 | `recovery?`              | `object`   |
 | `recovery.maxRecoveries` | `number`   |
+| `recovery.windowMs?`     | `number`   |
 
 ---
 
@@ -575,9 +561,9 @@ Decode the opaque payload at BirdDog's side of the Watchdog seam.
 
 #### Parameters
 
-| Parameter | Type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `job`     | \| \{ `state`: `"queued"`; `jobId`: `string`; `queue`: `string`; `lane`: `string`; `priority`: `number`; `payload`: `unknown`; `recovery?`: \{ `maxRecoveries`: `number`; \}; \} \| \{ `state`: `"running"`; `jobId`: `string`; `queue`: `string`; `lane`: `string`; `priority`: `number`; `payload`: `unknown`; `recovery?`: \{ `maxRecoveries`: `number`; \}; \} \| \{ `state`: `"settled"`; `outcome`: `"failed"` \| `"completed"` \| `"interrupted"` \| `"cancelled"` \| `"outcome_unknown"`; `failureReason?`: `string`; `jobId`: `string`; `queue`: `string`; `lane`: `string`; `priority`: `number`; `payload`: `unknown`; `recovery?`: \{ `maxRecoveries`: `number`; \}; \} |
+| Parameter | Type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `job`     | \| \{ `state`: `"queued"`; `jobId`: `string`; `queue`: `string`; `lane`: `string`; `priority`: `number`; `payload`: `unknown`; `notBefore?`: `number`; `recovery?`: \{ `maxRecoveries`: `number`; `windowMs?`: `number`; \}; \} \| \{ `state`: `"running"`; `jobId`: `string`; `queue`: `string`; `lane`: `string`; `priority`: `number`; `payload`: `unknown`; `notBefore?`: `number`; `recovery?`: \{ `maxRecoveries`: `number`; `windowMs?`: `number`; \}; \} \| \{ `state`: `"completing"`; `outcome`: `"failed"` \| `"completed"` \| `"interrupted"` \| `"cancelled"` \| `"outcome_unknown"`; `failureReason?`: `string`; `jobId`: `string`; `queue`: `string`; `lane`: `string`; `priority`: `number`; `payload`: `unknown`; `notBefore?`: `number`; `recovery?`: \{ `maxRecoveries`: `number`; `windowMs?`: `number`; \}; \} \| \{ `state`: `"settled"`; `outcome`: `"failed"` \| `"completed"` \| `"interrupted"` \| `"cancelled"` \| `"outcome_unknown"`; `failureReason?`: `string`; `jobId`: `string`; `queue`: `string`; `lane`: `string`; `priority`: `number`; `payload`: `unknown`; `notBefore?`: `number`; `recovery?`: \{ `maxRecoveries`: `number`; `windowMs?`: `number`; \}; \} |
 
 #### Returns
 
@@ -639,27 +625,6 @@ Build the recipient's one stable acceptance notice for one original mail.
 
 ---
 
-### hasPendingDelivery()
-
-```ts
-function hasPendingDelivery(outbox): Effect<boolean, BirdDogError>;
-```
-
-Whether this mail room's outbox still owes any reply a delivery attempt.
-Delivered receipts and exhausted dead letters stay but owe nothing.
-
-#### Parameters
-
-| Parameter | Type                                                                              |
-| --------- | --------------------------------------------------------------------------------- |
-| `outbox`  | `Pick`\<[`EffectBirdDogOptions`](#effectbirddogoptions)\[`"outbox"`\], `"list"`\> |
-
-#### Returns
-
-`Effect`\<`boolean`, [`BirdDogError`](#birddogerror)\>
-
----
-
 ### make()
 
 ```ts
@@ -667,13 +632,11 @@ function make(options): Effect<
   Readonly<{
     fanOut: (settlement) => Effect<void, BirdDogError>;
     postMail?: (mail) => Effect<void, BirdDogError>;
-    drainOutbox: () => Effect<void, BirdDogError>;
-    nextWakeAt: () => Effect<number | undefined, BirdDogError>;
   }>
 >;
 ```
 
-Construct BirdDog's Effect-native mail room over Post's shared outbox.
+Construct BirdDog's reply semantics over the existing durable staging owner.
 
 #### Parameters
 
@@ -685,6 +648,4 @@ Construct BirdDog's Effect-native mail room over Post's shared outbox.
 
 `Effect`\<`Readonly`\<\{ `fanOut`: (`settlement`) => `Effect`\<`void`,
 [`BirdDogError`](#birddogerror)\>; `postMail?`: (`mail`) => `Effect`\<`void`,
-[`BirdDogError`](#birddogerror)\>; `drainOutbox`: () => `Effect`\<`void`,
-[`BirdDogError`](#birddogerror)\>; `nextWakeAt`: () => `Effect`\<`number` \|
-`undefined`, [`BirdDogError`](#birddogerror)\>; \}\>\>
+[`BirdDogError`](#birddogerror)\>; \}\>\>

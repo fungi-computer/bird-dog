@@ -1,6 +1,6 @@
 {
   "name": "@fungi.computer/bird-dog",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "author": "Levi <levi@technomancy.dev>",
   "description": "Durable addressed agent mail over generic Watchdog work",
   "type": "module",
@@ -37,7 +37,6 @@
     "lint:anti-slop": "node ../../tooling/repository/scripts/lint-package-anti-slop.mjs"
   },
   "dependencies": {
-    "@fungi.computer/carrier": "workspace:*",
     "@fungi.computer/watchdog": "workspace:*",
     "effect": "4.0.2"
   },

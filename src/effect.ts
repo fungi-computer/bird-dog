@@ -4,10 +4,6 @@ import type {
 } from "@fungi.computer/watchdog";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import {
-  makePostOutbox,
-  postOutboxPending,
-} from "@fungi.computer/carrier/post";
 
 import type {
   BirdDogAgentJobInput,
@@ -215,6 +211,7 @@ export const BirdDogAgentWorkSchema = Schema.Struct({
   recovery: Schema.optional(
     Schema.Struct({
       maxRecoveries: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      windowMs: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
     }),
   ),
 });
@@ -246,43 +243,21 @@ export class BirdDogError extends Error {
   }
 }
 
-/** Effect host ports for the durable mail room. */
+/** Durable staging belongs to the host's existing Carrier Post transaction. */
 export type EffectBirdDogOptions = Readonly<{
-  outbox: Readonly<{
-    /** Store one encoded mail row under its durable key. */
-    put: (key: string, value: string) => Effect.Effect<void, BirdDogError>;
-    /** Read one encoded mail row, if it exists. */
-    read: (key: string) => Effect.Effect<string | undefined, BirdDogError>;
-    /** Read an ordered page of encoded mail rows. */
-    list: (
-      limit: number,
-      afterKey?: string,
-    ) => Effect.Effect<
-      readonly Readonly<{ key: string; value: string }>[],
-      BirdDogError
-    >;
-    /** Remove an invalid encoded row; completed deliveries retain receipts. */
-    delete: (key: string) => Effect.Effect<void, BirdDogError>;
-  }>;
-  /** Deliver one reply mail and report whether it was accepted. */
-  post: (mail: BirdDogMail) => Effect.Effect<boolean, BirdDogError>;
-  /** Arrange a future wake for pending delivery work. */
-  scheduleWake: (at: number) => Effect.Effect<void, BirdDogError>;
-  /** Return the host's current wall-clock time in milliseconds. */
+  /** Commit the complete reply batch through the host delivery owner. */
+  stage: (mail: readonly BirdDogMail[]) => Effect.Effect<void, BirdDogError>;
+  /** Current time used when constructing a new reply. */
   now: () => number;
 }>;
 
-/** Effect-native durable reply delivery. */
+/** Agent reply construction and durable staging; Watchdog owns delivery progress. */
 export type BirdDogEffect = Readonly<{
-  /** Queue replies owed by a settled agent job. */
+  /** Stage all reply letters for one settled command as one batch. */
   fanOut: (settlement: BirdDogSettlement) => Effect.Effect<void, BirdDogError>;
-  /** Durably queue one authored mail item in this Agent's existing outbox. */
+  /** Stage a host-authored letter through the same durable delivery owner. */
   postMail?:
     ((mail: BirdDogMail) => Effect.Effect<void, BirdDogError>) | undefined;
-  /** Deliver due replies and schedule any required retry wake. */
-  drainOutbox: () => Effect.Effect<void, BirdDogError>;
-  /** Earliest owed reply delivery, including retries; absent after delivery. */
-  nextWakeAt: () => Effect.Effect<number | undefined, BirdDogError>;
 }>;
 
 /** Validate and translate agent work into Watchdog's opaque job grammar. */
@@ -403,55 +378,18 @@ export function acceptedNotice(
   };
 }
 
-/**
- * Whether this mail room's outbox still owes any reply a delivery attempt.
- * Delivered receipts and exhausted dead letters stay but owe nothing.
- */
-export const hasPendingDelivery = (
-  outbox: Pick<EffectBirdDogOptions["outbox"], "list">,
-): Effect.Effect<boolean, BirdDogError> =>
-  postOutboxPending({ message: BirdDogMailSchema, outbox });
-
-/** Construct BirdDog's Effect-native mail room over Post's shared outbox. */
+/** Construct BirdDog's reply semantics over the existing durable staging owner. */
 export const make = (
   options: EffectBirdDogOptions,
-): Effect.Effect<BirdDogEffect> => {
-  const post = makePostOutbox<BirdDogMail, BirdDogError>({
-    message: BirdDogMailSchema,
-    key: (mail: BirdDogMail) => `outbox:${mail.key}`,
-    outbox: options.outbox,
-    deliver: options.post,
-    scheduleWake: options.scheduleWake,
-    now: options.now,
-    invalidRow: () => new BirdDogError("invalid outbox row"),
-    encodingFailed: () => new BirdDogError("could not encode outbox row"),
+): Effect.Effect<BirdDogEffect> =>
+  Effect.succeed({
+    /** Stage the complete settlement reply batch. */
+    fanOut: (settlement) =>
+      Effect.try({
+        try: () => settlementReplies(settlement, options.now()),
+        catch: (cause) =>
+          new BirdDogError("invalid agent job payload", { cause }),
+      }).pipe(Effect.flatMap(options.stage)),
+    /** Stage one host-authored letter. */
+    postMail: (mail) => options.stage([mail]),
   });
-  const fanOut = (settlement: BirdDogSettlement) =>
-    Effect.gen(function* () {
-      const createdAt = options.now();
-      const replies = yield* Effect.try({
-        try: () => settlementReplies(settlement, createdAt),
-        catch: () => new BirdDogError("invalid agent job payload"),
-      });
-      let wake: number | undefined;
-      for (const reply of replies) {
-        const hint = yield* post.enqueue(reply, createdAt);
-        if (hint !== undefined)
-          wake = wake === undefined ? hint : Math.min(wake, hint);
-      }
-      if (wake !== undefined) yield* options.scheduleWake(wake);
-    });
-  const postMail = (mail: BirdDogMail) =>
-    Effect.gen(function* () {
-      const createdAt = options.now();
-      const hint = yield* post.enqueue(mail, createdAt);
-      if (hint !== undefined) yield* options.scheduleWake(hint);
-      return;
-    });
-  return Effect.succeed({
-    fanOut,
-    postMail,
-    drainOutbox: post.drain,
-    nextWakeAt: post.nextWakeAt,
-  });
-};

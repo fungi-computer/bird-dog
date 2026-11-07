@@ -155,6 +155,7 @@ type BirdDogAgentWork = Readonly<{
   commandFactId: string;
   recovery?: Readonly<{
     maxRecoveries: number;
+    windowMs?: number;
   }>;
 }>;
 ```
@@ -193,41 +194,16 @@ Input for projecting accepted agent work into Watchdog's generic grammar.
 
 ---
 
-### BirdDogOutbox
-
-```ts
-type BirdDogOutbox = Readonly<{
-  put: (key, value) => Promise<void>;
-  read: (key) => Promise<string | undefined>;
-  list: (
-    limit,
-    afterKey?,
-  ) => Promise<
-    readonly Readonly<{
-      key: string;
-      value: string;
-    }>[]
-  >;
-  delete: (key) => Promise<void>;
-}>;
-```
-
-String-backed durable outbox owned by the BirdDog host.
-
----
-
 ### BirdDogOptions
 
 ```ts
 type BirdDogOptions = Readonly<{
-  outbox: BirdDogOutbox;
-  post: (mail) => Promise<boolean>;
-  scheduleWake: (at) => Promise<void>;
+  stage: (mail) => Promise<void>;
   now: () => number;
 }>;
 ```
 
-Host ports for BirdDog's durable mail delivery.
+Host ports for reply staging in its existing Carrier Post owner.
 
 ---
 
@@ -282,7 +258,6 @@ One open item named by a reply as waiting on its recipient.
 ```ts
 type BirdDogRuntime = Readonly<{
   fanOut: (settlement) => Promise<void>;
-  drainOutbox: () => Promise<void>;
 }>;
 ```
 
