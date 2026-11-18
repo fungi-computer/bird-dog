@@ -1,33 +1,25 @@
 # BirdDog (`@fungi.computer/bird-dog`)
 
-BirdDog translates addressed Agent work into Watchdog jobs and builds replies
-when that work settles. It owns envelope grammar, reply keys and settlement
-content. The host stages each reply batch through its existing Carrier Post
-owner; Watchdog owns delivery attempts and wakes.
+BirdDog lets one AI agent hand work to another and get the result back as a
+reply, even if something restarts in between.
 
-Every sender and recipient is an ordinary Agent Session. Parent and child
-relationships remain in the host's domain records.
+```mermaid
+flowchart LR
+  Parent[Parent Agent] -->|mail| BirdDog
+  BirdDog -->|agent job| Watchdog
+  Watchdog --> Child[Child Agent works]
+  Child -->|settles| BirdDog
+  BirdDog -->|reply batch| Post[Carrier Post]
+  Post --> Parent
+```
 
-## Install or set up
+## Quick start
+
+Install it:
 
 ```sh
 npm install @fungi.computer/bird-dog
 ```
-
-BirdDog is ESM-only. It depends on `@fungi.computer/watchdog` and `effect`,
-which npm installs for you. It does no I/O of its own, so it runs in Node,
-Cloudflare Workers or any runtime that can stage a batch of mail in its existing
-delivery owner.
-
-Entrypoints:
-
-- `@fungi.computer/bird-dog`: the Promise API on `BirdDog` and its types.
-- `@fungi.computer/bird-dog/effect`: the Effect-native mail room (`make`),
-  `settlementReplies`, the Effect Schema parsers and `BirdDogError`.
-  `settlementReplies` builds the same reply envelopes for a host-owned Post
-  transport.
-
-## Quick start
 
 This constructs a reply batch. The example prints it; a durable host stages the
 batch in its existing Carrier Post transaction.
@@ -85,6 +77,58 @@ await room.fanOut({
 In a real host, the settled job comes from Watchdog and `stage` commits the
 whole batch before the settlement cursor advances. Replaying a stable reply key
 retains the first staged letter, including its original timestamp.
+
+## Common tasks
+
+### Hand work to another Agent
+
+`BirdDog.agentJob` builds the Watchdog job. See the first two steps of the Quick
+start.
+
+### Reply when the work settles
+
+`fanOut` stages one reply per `replyTo` address. See
+[Core concepts](#core-concepts).
+
+### Use the Effect API
+
+The `/effect` entry point takes the same ports as Effect values. See Examples
+and checks.
+
+### Parse mail from outside your process
+
+Decode it with `BirdDogMailSchema`, also in Examples and checks.
+
+## Reference
+
+### Overview
+
+BirdDog translates addressed Agent work into Watchdog jobs and builds replies
+when that work settles. It owns envelope grammar, reply keys and settlement
+content. The host stages each reply batch through its existing Carrier Post
+owner; Watchdog owns delivery attempts and wakes.
+
+Every sender and recipient is an ordinary Agent Session. Parent and child
+relationships remain in the host's domain records.
+
+## Install or set up
+
+```sh
+npm install @fungi.computer/bird-dog
+```
+
+BirdDog is ESM-only. It depends on `@fungi.computer/watchdog` and `effect`,
+which npm installs for you. It does no I/O of its own, so it runs in Node,
+Cloudflare Workers or any runtime that can stage a batch of mail in its existing
+delivery owner.
+
+Entrypoints:
+
+- `@fungi.computer/bird-dog`: the Promise API on `BirdDog` and its types.
+- `@fungi.computer/bird-dog/effect`: the Effect-native mail room (`make`),
+  `settlementReplies`, the Effect Schema parsers and `BirdDogError`.
+  `settlementReplies` builds the same reply envelopes for a host-owned Post
+  transport.
 
 ## Core concepts
 
