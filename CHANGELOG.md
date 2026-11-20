@@ -1,5 +1,12 @@
 # @fungi.computer/bird-dog
 
+## 0.3.8
+
+### Patch Changes
+
+- Updated dependencies
+  - @fungi.computer/watchdog@0.1.5
+
 ## 0.3.7
 
 ### Patch Changes
