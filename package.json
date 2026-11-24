@@ -1,6 +1,6 @@
 {
   "name": "@fungi.computer/bird-dog",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "author": "Levi <levi@technomancy.dev>",
   "description": "Durable addressed agent mail over generic Watchdog work",
   "type": "module",
@@ -29,7 +29,7 @@
     "smoke": "node --input-type=module -e \"import('./dist/index.js').then(({BirdDog}) => { if (!BirdDog) process.exit(1); })\""
   },
   "dependencies": {
-    "@fungi.computer/watchdog": "0.1.6",
+    "@fungi.computer/watchdog": "0.1.7",
     "effect": "4.0.2"
   },
   "devDependencies": {

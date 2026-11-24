@@ -1,5 +1,11 @@
 # @fungi.computer/bird-dog
 
+## 0.3.10
+
+### Patch Changes
+
+- @fungi.computer/watchdog@0.1.7
+
 ## 0.3.9
 
 ### Patch Changes
